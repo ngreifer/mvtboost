@@ -99,6 +99,16 @@ metb <- function(y, X, id,
   if(is.character(id)){
     id <- match(id, colnames(X))
   }
+  if (length(unique(y)) > 2) {
+    treat.type <- "continuous"
+    gbm.dist <- "Gaussian"
+    glmer.family <- "gaussian"
+  }
+  else {
+    treat.type = "binary"
+    gbm.dist <- "Bernoulli"
+    glmer.family <- "binomial"
+  }
   
   if(cv.folds > 1){
     #cat("cv:", fill = T)
@@ -263,7 +273,7 @@ metb.fit <- function(y, X, id,
   
   gbmPrep <- gbmt_data(x=data.frame(X[train, -id, drop=F]), y=r[train],
                        train_params=tp, 
-                       distribution=gbm_dist("Gaussian"),
+                       distribution=gbm_dist(gbm.dist),
                        par_details=gbmParallel(num_threads = num_threads))
   
   for(i in 1:n.trees){
@@ -341,8 +351,9 @@ metb.fit <- function(y, X, id,
     e$s <- s
     environment(form) <- e
     
-    o <- lme4::lmer(form, data=d, REML=T, subset = s, 
-                  control = lme4::lmerControl(calc.derivs = FALSE))
+    o <- lme4::glmer(form, data=d, REML=T, subset = s, 
+                  control = lme4::glmerControl(calc.derivs = FALSE),
+                  family = glmer.family)
     o@frame <- o@frame[1, ]
      
     if(save.mods) mods[[i]] <- o
@@ -440,7 +451,8 @@ predict.metb <- function(object, newdata, id, n.trees=NULL, ...){
     
     # note: when single.tree=TRUE, initF is not included in gbm predicted values
     gbm_pred <- predict(gbm.obj, n.trees=i, single.tree=TRUE, 
-                        newdata=data.frame(newdata))
+                        newdata=data.frame(newdata),
+                        type = "response")
     
     
     # list terminal nodes (-1) first; rownames are are terminal node ids
@@ -462,8 +474,8 @@ predict.metb <- function(object, newdata, id, n.trees=NULL, ...){
 
     o <- object$mods[[i]]
     
-    yhatm <- predict(o, newdata=d, allow.new.levels = TRUE)
-    fixedm <- predict(o, newdata=d, re.form=NA)
+    yhatm <- predict(o, newdata=d, allow.new.levels = TRUE, type = "response")
+    fixedm <- predict(o, newdata=d, re.form=NA, type = "response")
     zuhat <- yhatm - fixedm
 
     # update totals at each iteration
